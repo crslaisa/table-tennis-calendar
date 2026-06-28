@@ -1,0 +1,285 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>王楚钦 / 孙颖莎 赛程日历订阅 — Wang Chuqin / Sun Yingsha Match Calendar</title>
+<style>
+  :root {
+    --accent: #d23b3b;
+    --ink: #1c1c1c;
+    --muted: #6b6b6b;
+    --bg-card: #fafafa;
+    --border: #e3e3e3;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", Helvetica, Arial, sans-serif;
+    color: var(--ink);
+    background: #fff;
+    line-height: 1.5;
+  }
+  header {
+    padding: 2.5rem 1.5rem 1.5rem;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+  }
+  header h1 { margin: 0 0 0.4rem; font-size: 1.6rem; }
+  header p { margin: 0; color: var(--muted); font-size: 0.95rem; }
+  main {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 2rem 1.5rem 3rem;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1.5rem;
+  }
+  @media (max-width: 700px) {
+    main { grid-template-columns: 1fr; }
+  }
+  .card {
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.5rem;
+    background: var(--bg-card);
+  }
+  .card h2 { margin: 0 0 0.25rem; font-size: 1.25rem; }
+  .card .subtitle { color: var(--muted); font-size: 0.85rem; margin-bottom: 1.2rem; }
+  .btn-row { display: flex; flex-direction: column; gap: 0.6rem; }
+  .btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.65rem 1rem;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background: #fff;
+    color: var(--ink);
+    text-decoration: none;
+    font-size: 0.92rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  .btn:hover { border-color: var(--accent); background: #fff7f7; }
+  .btn .icon { font-size: 1.05rem; }
+  .copy-row {
+    display: flex;
+    gap: 0.5rem;
+    margin-top: 0.6rem;
+  }
+  .copy-row input {
+    flex: 1;
+    padding: 0.5rem 0.6rem;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    font-size: 0.8rem;
+    color: var(--muted);
+    background: #fff;
+  }
+  .copy-row button {
+    padding: 0.5rem 0.8rem;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: #fff;
+    cursor: pointer;
+    font-size: 0.8rem;
+    white-space: nowrap;
+  }
+  .copy-row button:hover { border-color: var(--accent); }
+  .outlook-note {
+    font-size: 0.78rem;
+    color: var(--muted);
+    margin-top: 0.4rem;
+  }
+  .copied-msg {
+    font-size: 0.78rem;
+    color: var(--accent);
+    margin-top: 0.3rem;
+    height: 1em;
+  }
+  footer {
+    max-width: 880px;
+    margin: 0 auto;
+    padding: 0 1.5rem 3rem;
+    color: var(--muted);
+    font-size: 0.82rem;
+  }
+  footer h3 { font-size: 0.95rem; color: var(--ink); margin-top: 1.6rem; }
+  .lang-toggle { text-align: center; margin-top: 0.8rem; }
+  .lang-toggle button {
+    border: none;
+    background: none;
+    color: var(--muted);
+    text-decoration: underline;
+    cursor: pointer;
+    font-size: 0.85rem;
+    padding: 0.2rem 0.5rem;
+  }
+  .lang-toggle button.active { color: var(--accent); font-weight: 600; text-decoration: none; cursor: default; }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>🏓 王楚钦 / 孙颖莎 赛程日历</h1>
+  <p data-zh="本页根据微博账号 @草莓牛奶特别甜 发布的赛程信息自动生成，订阅后赛程会自动同步到你的日历。"
+     data-en="Auto-generated from Weibo account @草莓牛奶特别甜's schedule posts. Subscribe once and new matches sync automatically.">
+     本页根据微博账号 @草莓牛奶特别甜 发布的赛程信息自动生成，订阅后赛程会自动同步到你的日历。
+  </p>
+  <div class="lang-toggle">
+    <button class="active" data-lang-btn="zh">中文</button> ·
+    <button data-lang-btn="en">English</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- Wang Chuqin card -->
+  <section class="card" data-feed="wangchuqin">
+    <h2>王楚钦 Wang Chuqin</h2>
+    <p class="subtitle" data-zh="包含王楚钦的单打、双打及混双赛程" data-en="Singles, doubles, and mixed doubles matches">
+      包含王楚钦的单打、双打及混双赛程
+    </p>
+    <div class="btn-row">
+      <a class="btn google-btn" target="_blank" rel="noopener">
+        <span class="icon">📅</span>
+        <span data-zh="添加到 Google 日历" data-en="Add to Google Calendar">添加到 Google 日历</span>
+      </a>
+      <a class="btn apple-btn" rel="noopener">
+        <span class="icon"></span>
+        <span data-zh="添加到 Apple 日历" data-en="Add to Apple Calendar">添加到 Apple 日历</span>
+      </a>
+      <button class="btn outlook-btn" type="button">
+        <span class="icon">📋</span>
+        <span data-zh="复制链接以添加到 Outlook" data-en="Copy link to add to Outlook">复制链接以添加到 Outlook</span>
+      </button>
+    </div>
+    <div class="copy-row">
+      <input type="text" readonly class="feed-url-input">
+      <button type="button" class="copy-btn">
+        <span data-zh="复制" data-en="Copy">复制</span>
+      </button>
+    </div>
+    <p class="copied-msg"></p>
+    <p class="outlook-note" data-zh="Outlook：依次点击「添加日历 → 从网络订阅」，粘贴上方链接。"
+       data-en="Outlook: go to Add calendar → Subscribe from web, then paste the link above.">
+       Outlook：依次点击「添加日历 → 从网络订阅」，粘贴上方链接。
+    </p>
+  </section>
+
+  <!-- Sun Yingsha card -->
+  <section class="card" data-feed="sunyingsha">
+    <h2>孙颖莎 Sun Yingsha</h2>
+    <p class="subtitle" data-zh="包含孙颖莎的单打、双打及混双赛程" data-en="Singles, doubles, and mixed doubles matches">
+      包含孙颖莎的单打、双打及混双赛程
+    </p>
+    <div class="btn-row">
+      <a class="btn google-btn" target="_blank" rel="noopener">
+        <span class="icon">📅</span>
+        <span data-zh="添加到 Google 日历" data-en="Add to Google Calendar">添加到 Google 日历</span>
+      </a>
+      <a class="btn apple-btn" rel="noopener">
+        <span class="icon"></span>
+        <span data-zh="添加到 Apple 日历" data-en="Add to Apple Calendar">添加到 Apple 日历</span>
+      </a>
+      <button class="btn outlook-btn" type="button">
+        <span class="icon">📋</span>
+        <span data-zh="复制链接以添加到 Outlook" data-en="Copy link to add to Outlook">复制链接以添加到 Outlook</span>
+      </button>
+    </div>
+    <div class="copy-row">
+      <input type="text" readonly class="feed-url-input">
+      <button type="button" class="copy-btn">
+        <span data-zh="复制" data-en="Copy">复制</span>
+      </button>
+    </div>
+    <p class="copied-msg"></p>
+    <p class="outlook-note" data-zh="Outlook：依次点击「添加日历 → 从网络订阅」，粘贴上方链接。"
+       data-en="Outlook: go to Add calendar → Subscribe from web, then paste the link above.">
+       Outlook：依次点击「添加日历 → 从网络订阅」，粘贴上方链接。
+    </p>
+  </section>
+
+</main>
+
+<footer>
+  <h3 data-zh="关于刷新时间" data-en="About refresh timing">关于刷新时间</h3>
+  <p data-zh="Google 日历约每 12–24 小时刷新一次，Outlook 约每 3–24 小时，均不可由用户调整；Apple 日历默认每周刷新，但可在订阅设置中手动调整为最快 5 分钟一次。这是各平台自身的限制，不代表本工具未及时更新赛程。"
+     data-en="Google Calendar refreshes roughly every 12–24 hours, Outlook roughly every 3–24 hours — neither is user-adjustable. Apple Calendar defaults to weekly but can be set as low as every 5 minutes in its subscription settings. This is a platform limitation, not a delay in this tool.">
+     Google 日历约每 12–24 小时刷新一次，Outlook 约每 3–24 小时，均不可由用户调整；Apple 日历默认每周刷新，但可在订阅设置中手动调整为最快 5 分钟一次。这是各平台自身的限制，不代表本工具未及时更新赛程。
+  </p>
+  <h3 data-zh="数据来源与准确性" data-en="Source and accuracy">数据来源与准确性</h3>
+  <p data-zh="赛程信息来自微博账号 @草莓牛奶特别甜 的公开发布内容，经自动解析后生成。低置信度的信息会先经过人工复核才会发布，但仍可能存在遗漏或延迟；如发现错误欢迎反馈。"
+     data-en="Schedule data comes from the public posts of Weibo account @草莓牛奶特别甜, parsed automatically. Lower-confidence items are held for manual review before publishing, but omissions or delays are still possible — feedback on errors is welcome.">
+     赛程信息来自微博账号 @草莓牛奶特别甜 的公开发布内容，经自动解析后生成。低置信度的信息会先经过人工复核才会发布，但仍可能存在遗漏或延迟；如发现错误欢迎反馈。
+  </p>
+</footer>
+
+<script>
+  // ---- Configuration -------------------------------------------------
+  // Replace FEED_BASE_URL with the real HTTPS domain this is deployed to
+  // (see README "Deployment"). Must be HTTPS for the Google Calendar
+  // deep-link and for webcal:// links to work correctly on Apple devices.
+  const FEED_BASE_URL = "https://clarissally.github.io/table-tennis-calendar";
+  const FEEDS = {
+    wangchuqin: `${FEED_BASE_URL}/feeds/wangchuqin.ics`,
+    sunyingsha: `${FEED_BASE_URL}/feeds/sunyingsha.ics`,
+  };
+
+  function toWebcal(httpsUrl) {
+    return httpsUrl.replace(/^https?:\/\//, "webcal://");
+  }
+
+  document.querySelectorAll("section[data-feed]").forEach((section) => {
+    const key = section.getAttribute("data-feed");
+    const feedUrl = FEEDS[key];
+    const webcalUrl = toWebcal(feedUrl);
+
+    const googleBtn = section.querySelector(".google-btn");
+    googleBtn.href = `https://calendar.google.com/calendar/render?cid=${encodeURIComponent(webcalUrl)}`;
+
+    const appleBtn = section.querySelector(".apple-btn");
+    appleBtn.href = webcalUrl;
+
+    const input = section.querySelector(".feed-url-input");
+    input.value = feedUrl;
+
+    const copiedMsg = section.querySelector(".copied-msg");
+
+    function copyToClipboard() {
+      navigator.clipboard.writeText(feedUrl).then(() => {
+        copiedMsg.textContent = currentLang === "zh" ? "已复制！" : "Copied!";
+        setTimeout(() => { copiedMsg.textContent = ""; }, 2000);
+      }).catch(() => {
+        input.select();
+        copiedMsg.textContent = currentLang === "zh"
+          ? "无法自动复制，请手动选择并复制上方链接"
+          : "Couldn't auto-copy — please select and copy the link above manually";
+      });
+    }
+
+    section.querySelector(".copy-btn").addEventListener("click", copyToClipboard);
+    section.querySelector(".outlook-btn").addEventListener("click", copyToClipboard);
+  });
+
+  // ---- Simple zh/en toggle --------------------------------------------
+  let currentLang = "zh";
+  function setLang(lang) {
+    currentLang = lang;
+    document.querySelectorAll("[data-zh]").forEach((el) => {
+      el.textContent = el.getAttribute(`data-${lang}`);
+    });
+    document.querySelectorAll("[data-lang-btn]").forEach((btn) => {
+      btn.classList.toggle("active", btn.getAttribute("data-lang-btn") === lang);
+    });
+  }
+  document.querySelectorAll("[data-lang-btn]").forEach((btn) => {
+    btn.addEventListener("click", () => setLang(btn.getAttribute("data-lang-btn")));
+  });
+</script>
+
+</body>
+</html>
