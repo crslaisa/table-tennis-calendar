@@ -1,0 +1,30 @@
+name: debug-dump-posts
+
+# One-off manual diagnostic, not on a schedule. Run from the Actions tab
+# ("Run workflow") to print full text + classification for the account's
+# most recent posts across N pages -- useful for checking whether a
+# specific announcement (e.g. a given date's schedule) is in plain text
+# (Plan A can read it) or only reachable via an external link (needs
+# Plan B). Safe to delete this file once no longer needed.
+
+on:
+  workflow_dispatch:
+    inputs:
+      max_pages:
+        description: "How many pages of recent posts to fetch"
+        required: false
+        default: "3"
+
+permissions:
+  contents: read
+
+jobs:
+  dump:
+    runs-on: self-hosted
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          clean: false
+
+      - name: Dump posts
+        run: python tools/dump_posts.py ${{ github.event.inputs.max_pages }}
