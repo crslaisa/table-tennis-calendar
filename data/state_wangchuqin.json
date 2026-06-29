@@ -35,5 +35,23 @@
     "timezone_assumed": "Asia/Shanghai",
     "tournament_name": "WTT美国大满贯",
     "uid": "ttcal-9a8c36813c2f2e97@clarissally.github.io"
+  },
+  "ttcal-cdb8fe5055e8bfa1@clarissally.github.io": {
+    "confidence": "medium",
+    "date": "2026-07-01",
+    "last_modified": "2026-06-29T19:21:55Z",
+    "player1": "王楚钦",
+    "player2": "曼纳弗·维卡诗·塔卡",
+    "player_tags": [
+      "wangchuqin"
+    ],
+    "raw_line": "9:35 T1 王楚钦🇨🇳VS曼纳弗·维卡诗·塔卡🇮🇳",
+    "sequence": 0,
+    "source_post_id": "5315135241719240",
+    "table": "T1",
+    "time_local": "9:35",
+    "timezone_assumed": "Asia/Shanghai",
+    "tournament_name": "WTT美国大满贯",
+    "uid": "ttcal-cdb8fe5055e8bfa1@clarissally.github.io"
   }
 }
