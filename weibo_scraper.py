@@ -5,27 +5,43 @@ Fetches posts from the confirmed primary source account
 @草莓牛奶特别甜 (uid 7360795486) via the public, no-login m.weibo.cn
 mobile-web JSON API.
 
-IMPORTANT — network note from development:
-This module could not be exercised end-to-end inside the build sandbox,
-because the sandbox's outbound network is allowlisted and does not include
-weibo.cn (confirmed via direct curl test: the proxy returned
-403 blocked-by-allowlist). The JSON shape and endpoints below were verified
-by manually loading the same URLs in a real browser session during
-development, so the request/response handling here reflects the real API,
-but you should run a smoke test against the live account from an
-unrestricted environment (your own machine, a normal CI runner, etc.)
-before relying on this in production. See README.md "Testing" section.
+IMPORTANT — network notes from development and first real deployment:
 
-No login/session/cookies are used — this matches the project's
-low-frequency, unauthenticated polling design (see design doc Section 2.1).
+1. (build-sandbox note) This module could not be exercised end-to-end inside
+   the original build sandbox, because that sandbox's outbound network is
+   allowlisted and does not include weibo.cn. The JSON shape and endpoints
+   below were verified by manually loading the same URLs in a real browser
+   session during development.
+
+2. (first GitHub-hosted-runner deployment) The very first live run, from a
+   GitHub-hosted runner (datacenter IP), got an empty response body instead
+   of JSON. Fix: m.weibo.cn's API silently rejects requests with no Referer
+   (or the wrong UA/Pwa headers) -- see the headers in _get_json below.
+
+3. (first self-hosted-runner deployment) The first live run from the user's
+   own machine got back valid JSON, but with {"ok": -100, "url":
+   "https://passport.weibo.com/sso/signin?..."} instead of post data. This
+   is Weibo's anonymous "visitor system" login wall -- m.weibo.cn's
+   container API requires a short-lived anonymous "visitor" cookie (SUB/
+   SUBP, obtained via the same genvisitor/incarnate handshake a real
+   browser does invisibly on first page load) before it will serve guest
+   API responses, and apparently enforces this more aggressively for some
+   IPs than others. Fix: _get_visitor_cookie() below performs that
+   handshake once per process and _get_json transparently retries with it
+   if it sees ok == -100. This is still anonymous/no-login in the sense
+   that no Weibo account or password is involved -- it's the same
+   anonymous cookie any browser gets for free just by loading the page.
 """
 
 from __future__ import annotations
 
 import json
+import random
+import re
 import time
-import urllib.request
 import urllib.error
+import urllib.parse
+import urllib.request
 from dataclasses import dataclass
 from typing import List, Optional
 
@@ -39,6 +55,8 @@ USER_AGENT = (
 
 INDEX_URL = "https://m.weibo.cn/api/container/getIndex"
 EXTEND_URL = "https://m.weibo.cn/statuses/extend"
+GENVISITOR_URL = "https://passport.weibo.com/visitor/genvisitor"
+INCARNATE_URL = "https://passport.weibo.com/visitor/visitor"
 
 REQUEST_TIMEOUT_SECONDS = 15
 # Be polite: this account is polled on a 30-60 minute cadence per the design
@@ -60,37 +78,117 @@ class WeiboFetchError(RuntimeError):
     pass
 
 
-def _get_json(url: str) -> dict:
-    # Referer + MWeibo-Pwa are required in practice: m.weibo.cn's API
-    # rejects requests with no Referer (often with an empty 200 body,
-    # which surfaces here as a JSONDecodeError) -- this was discovered
-    # when the first real deployment run (from a GitHub Actions runner,
-    # a datacenter IP unlike the browser session used during development)
-    # got exactly that empty-body failure.
-    req = urllib.request.Request(
-        url,
-        headers={
-            "User-Agent": USER_AGENT,
-            "Accept": "application/json, text/plain, */*",
-            "Referer": f"https://m.weibo.cn/u/{UID}",
-            "MWeibo-Pwa": "1",
-            "X-Requested-With": "XMLHttpRequest",
-        },
+# Cached anonymous "visitor" cookie (see note 3 above). Acquired lazily, at
+# most once per process, the first time the API demands it.
+_VISITOR_COOKIE: Optional[str] = None
+
+
+def _request_headers() -> dict:
+    headers = {
+        "User-Agent": USER_AGENT,
+        "Accept": "application/json, text/plain, */*",
+        "Referer": f"https://m.weibo.cn/u/{UID}",
+        "MWeibo-Pwa": "1",
+        "X-Requested-With": "XMLHttpRequest",
+    }
+    if _VISITOR_COOKIE:
+        headers["Cookie"] = _VISITOR_COOKIE
+    return headers
+
+
+def _get_visitor_cookie() -> str:
+    """Perform Weibo's anonymous "visitor system" handshake (genvisitor ->
+    incarnate) and cache the resulting cookie for the rest of this process.
+    Raises WeiboFetchError with a specific, distinguishable message at
+    whichever step fails, since this can't be tested from a network-
+    restricted environment and may need remote debugging from real error
+    text alone."""
+    global _VISITOR_COOKIE
+
+    common_headers = {"User-Agent": USER_AGENT, "Referer": "https://weibo.com/"}
+
+    # Step 1: genvisitor -- ask for a "tid" identifying this anonymous client.
+    gen_req = urllib.request.Request(
+        GENVISITOR_URL,
+        data=urllib.parse.urlencode({"cb": "gen_callback"}).encode("utf-8"),
+        headers=common_headers,
+        method="POST",
     )
+    try:
+        with urllib.request.urlopen(gen_req, timeout=REQUEST_TIMEOUT_SECONDS) as resp:
+            gen_body = resp.read().decode("utf-8", errors="replace")
+    except urllib.error.URLError as e:
+        raise WeiboFetchError(f"visitor handshake step 1 (genvisitor) network error: {e}") from e
+
+    m = re.search(r"gen_callback\((.*)\)\s*;?\s*$", gen_body.strip())
+    if not m:
+        raise WeiboFetchError(
+            f"visitor handshake step 1 (genvisitor): unexpected response shape: {gen_body[:300]!r}"
+        )
+    try:
+        gen_data = json.loads(m.group(1))
+    except json.JSONDecodeError as e:
+        raise WeiboFetchError(
+            f"visitor handshake step 1 (genvisitor): non-JSON payload: {m.group(1)[:300]!r}"
+        ) from e
+
+    tid = (gen_data.get("data") or {}).get("tid")
+    if not tid:
+        raise WeiboFetchError(f"visitor handshake step 1 (genvisitor): no tid in response: {gen_data}")
+
+    # Step 2: incarnate -- exchange the tid for real SUB/SUBP cookies.
+    incarnate_params = {
+        "a": "incarnate",
+        "t": tid,
+        "w": "2",
+        "c": "095",
+        "gc": "",
+        "cb": "cross_domain",
+        "from": "weibo",
+        "_rand": str(random.random()),
+    }
+    incarnate_url = f"{INCARNATE_URL}?{urllib.parse.urlencode(incarnate_params)}"
+    incarnate_req = urllib.request.Request(incarnate_url, headers=common_headers)
+    try:
+        with urllib.request.urlopen(incarnate_req, timeout=REQUEST_TIMEOUT_SECONDS) as resp:
+            cookie_headers = resp.headers.get_all("Set-Cookie") or []
+    except urllib.error.URLError as e:
+        raise WeiboFetchError(f"visitor handshake step 2 (incarnate) network error: {e}") from e
+
+    if not cookie_headers:
+        raise WeiboFetchError("visitor handshake step 2 (incarnate): server returned no Set-Cookie header")
+
+    _VISITOR_COOKIE = "; ".join(c.split(";", 1)[0] for c in cookie_headers)
+    return _VISITOR_COOKIE
+
+
+def _get_json(url: str, *, _retried_after_login_wall: bool = False) -> dict:
+    req = urllib.request.Request(url, headers=_request_headers())
     try:
         with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_SECONDS) as resp:
             body = resp.read()
     except urllib.error.URLError as e:
         raise WeiboFetchError(f"network error fetching {url}: {e}") from e
+
     if not body or not body.strip():
         raise WeiboFetchError(
             f"empty response body from {url} -- likely blocked/rate-limited "
             f"by the server rather than a genuine malformed response"
         )
     try:
-        return json.loads(body)
+        data = json.loads(body)
     except json.JSONDecodeError as e:
         raise WeiboFetchError(f"non-JSON response from {url}: {e}") from e
+
+    # ok == -100 with a passport.weibo.com sso/signin url means the request
+    # hit the anonymous-visitor login wall (see note 3 in the module
+    # docstring). Do the visitor handshake once and retry this same request
+    # with the resulting cookie before giving up.
+    if data.get("ok") == -100 and not _retried_after_login_wall:
+        _get_visitor_cookie()
+        return _get_json(url, _retried_after_login_wall=True)
+
+    return data
 
 
 def _strip_html(text: str) -> str:
@@ -98,8 +196,6 @@ def _strip_html(text: str) -> str:
     plain text good enough for the schedule parser. Deliberately simple
     (no external HTML parser dependency) since the input is a small,
     predictable subset of HTML, not arbitrary markup."""
-    import re
-
     text = re.sub(r"<br\s*/?>", "\n", text)
     text = re.sub(r"<[^>]+>", "", text)
     text = text.replace("&amp;", "&").replace("&lt;", "<").replace("&gt;", ">")
@@ -177,8 +273,8 @@ def fetch_recent_posts(max_pages: int = 1, page_delay_seconds: float = MIN_SECON
 
 if __name__ == "__main__":
     # Manual smoke test entry point. Run this from an environment with
-    # normal internet access (NOT this build sandbox) to verify the live
-    # API still matches the shape assumed above before deploying.
+    # normal internet access to verify the live API still matches the shape
+    # assumed above before deploying.
     fetched = fetch_recent_posts(max_pages=1)
     print(f"Fetched {len(fetched)} posts")
     for p in fetched[:5]:
