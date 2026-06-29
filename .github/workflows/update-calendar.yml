@@ -38,15 +38,17 @@ jobs:
       # whatever `python` is already on PATH for the runner service.
 
       - name: Run pipeline
-        # max-pages 3: confirmed via tools/dump_posts.py (see weibo_scraper.py
-        # fetch_recent_posts docstring) that this container pages via
-        # &page=N, and during a busy tournament window the account posts
-        # fast enough that a schedule post (e.g. "7月1日中国队赛程") can
-        # already be several pages deep by the time this 30-min job picks
-        # it up -- max_pages=1 was confirmed to miss it. 3 pages (~30+
-        # posts) gives real headroom over one 30-min gap without adding
-        # much request volume/latency.
-        run: python run_pipeline.py --max-pages 3
+        # max-pages 6: confirmed live (production run #22) that 3 pages
+        # (~32 posts) was NOT enough -- during this tournament window the
+        # account posts match-result recaps very fast (each completed match
+        # gets its own recap post), so a schedule post from earlier in the
+        # day (e.g. "7月1日中国队赛程") can already be 40-60 posts deep by
+        # the time a 30-min job runs. 6 pages (~60+ posts) was confirmed via
+        # tools/dump_posts.py to reach that post and complete in ~1.5min on
+        # the self-hosted runner -- cheap enough to use as the standing
+        # default rather than re-tuning this every time posting volume
+        # spikes.
+        run: python run_pipeline.py --max-pages 6
 
       - name: Commit and push if changed
         run: |
