@@ -56,9 +56,14 @@ from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from typing import Dict, List, Optional
 
-from schedule_parser import ScheduleEvent, overall_confidence
+from schedule_parser import ScheduleEvent, SUN_YINGSHA, WANG_CHUQIN, overall_confidence
 
 UID_DOMAIN = "clarissally.github.io"  # real deployment domain (GitHub Pages, repo table-tennis-calendar)
+
+# Names used to tell "our side" apart from "the opponent" in a parsed
+# player1/player2 pair -- see _identity_key()'s docstring for why this
+# matters for UID stability.
+_TARGET_NAMES = (WANG_CHUQIN, SUN_YINGSHA)
 
 DATA_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data")
 REVIEW_QUEUE_PATH = os.path.join(DATA_DIR, "review_queue.json")
@@ -108,27 +113,61 @@ class UpdateResult:
 
 
 def compute_uid(event: ScheduleEvent) -> str:
-    """Stable UID derived from (date, table, the two players) -- NOT from
-    source_post_id, since the same match gets re-announced across multiple
-    posts and must collapse to the same UID each time. Table number is
-    included because it's part of how the source distinguishes concurrent
-    matches at the same time slot; if a correction changes the table for
-    the same date+players, see the note in apply_update() about why that's
-    treated as a field change on the same UID rather than a new identity --
-    we deliberately do NOT include table in a way that would split the UID,
-    since a few real bug accounts confirmed bumping table is the same
-    match. See _identity_key().
+    """Stable UID derived from _identity_key() -- NOT from source_post_id,
+    since the same match gets re-announced (and corrected) across multiple
+    posts and must collapse to the same UID each time. See _identity_key()
+    for exactly which fields make up "the same match".
     """
     key = _identity_key(event)
     digest = hashlib.sha1(key.encode("utf-8")).hexdigest()[:16]
     return f"ttcal-{digest}@{UID_DOMAIN}"
 
 
+def _is_self_side(value: Optional[str]) -> bool:
+    """True if this player field is "our side" -- i.e. it names Wang Chuqin
+    and/or Sun Yingsha (singles, or as one half of a mixed-doubles pairing
+    written "王楚钦/孙颖莎")."""
+    return bool(value) and any(name in value for name in _TARGET_NAMES)
+
+
 def _identity_key(event: ScheduleEvent) -> str:
-    # Sort the two player values so "A vs B" and "B vs A" (shouldn't happen
-    # from one source, but cheap insurance) hash identically.
-    players = sorted([event.player1.value or "", event.player2.value or ""])
-    return "|".join([event.date.value or "", players[0], players[1]])
+    """What counts as "the same match" across re-announcements/corrections.
+
+    Bug fixed here (found via a live case: a post listing
+    "5:20 T1 王楚钦/孙颖莎 vs TBD" was later edited to fill in the real
+    opponent): the OLD key was date + sorted(player1, player2), which put
+    the opponent's name inside the identity itself. Any opponent edit --
+    filling in a TBD, or a name correction -- changed the key, so it hashed
+    to a brand-new UID instead of updating the existing one. The old
+    (wrong-opponent) StoredEvent was never replaced, and since this module
+    never auto-deletes (see module docstring's "Known limitation"), the
+    stale record would sit in the feed forever alongside the new one --
+    a permanent duplicate.
+
+    Fix: identity is now date + table + "our side" (the player1/player2
+    value that actually names Wang Chuqin/Sun Yingsha), and the opponent is
+    treated purely as a mutable field (handled by _fields_equal()'s
+    sequence-bump path, same as a time correction). So:
+      - "vs TBD" -> "vs <real opponent>" updates the existing event.
+      - opponent A -> opponent B (e.g. a misspelled/corrected name) updates
+        the existing event instead of creating a second one.
+      - a genuinely different match for the same pair on the same day will
+        only collide if it ALSO reuses the same table -- accepted as a rare
+        edge case for this MVP (the source has no round/match-id field to
+        disambiguate further); in practice the source doesn't reuse a table
+        for two different matches by the same pairing on the same day.
+    """
+    p1 = event.player1.value or ""
+    p2 = event.player2.value or ""
+    if _is_self_side(p1):
+        self_side = p1
+    elif _is_self_side(p2):
+        self_side = p2
+    else:
+        # Shouldn't happen -- parse_post() only emits events tagged with at
+        # least one target player -- but don't crash if it ever does.
+        self_side = "|".join(sorted([p1, p2]))
+    return "|".join([event.date.value or "", event.table.value or "", self_side])
 
 
 def _to_stored(event: ScheduleEvent, uid: str, sequence: int, last_modified: str) -> StoredEvent:
