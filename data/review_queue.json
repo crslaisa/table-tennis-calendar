@@ -1,1 +1,25 @@
-[]
+[
+  {
+    "uid": "ttcal-313ba7607c7ba9e5@table-tennis-calendar.example",
+    "reason": "overall_confidence=medium; needs human check before publishing",
+    "queued_at": "2026-06-29T20:52:53Z",
+    "event": {
+      "uid": "ttcal-313ba7607c7ba9e5@table-tennis-calendar.example",
+      "tournament_name": "WTT美国大满贯",
+      "date": "2026-07-01",
+      "time_local": "9:35",
+      "timezone_assumed": "Asia/Shanghai",
+      "table": "T1",
+      "player1": "王楚钦",
+      "player2": "曼纳弗·维卡诗·塔卡",
+      "player_tags": [
+        "wangchuqin"
+      ],
+      "confidence": "medium",
+      "sequence": 0,
+      "last_modified": "2026-06-29T20:52:53Z",
+      "source_post_id": "5315135241719240",
+      "raw_line": "9:35 T1 王楚钦🇨🇳VS曼纳弗·维卡诗·塔卡🇮🇳"
+    }
+  }
+]
