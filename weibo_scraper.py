@@ -294,29 +294,56 @@ def fetch_recent_posts(max_pages: int = 1, page_delay_seconds: float = MIN_SECON
     already includes the pinned card first -- so max_pages=1 naturally
     catches it without needing to scroll/paginate further. Confirmed by the
     user, who has watched this account's posting pattern directly.
+
+    Pagination mechanism (confirmed by direct API inspection, see
+    tools/dump_posts.py debug output): this container -- a user's own post
+    timeline, containerid "107603"+uid -- does NOT return a usable
+    cardlistInfo.since_id. A real response's cardlistInfo looks like
+    {'containerid': ..., 'v_p': 42, 'show_style': 1, 'total': 55015,
+    'autoLoadMoreIndex': 10, 'page': 2} -- there is no since_id key at all.
+    The original since_id-based loop here was therefore a silent no-op:
+    since_id was always None/falsy, so the loop broke after page 1 every
+    time regardless of max_pages, capping every fetch at whatever a single
+    getIndex call returns (~11-12 posts). since_id pagination is a
+    different Weibo container type (e.g. the combined "microblog" home
+    feed); this "this user's posts" container instead pages via a plain
+    "&page=N" query parameter (1-indexed; omitted/implicit for page 1).
+    Deduplicate by mid while paging since a page can legitimately repeat a
+    card already seen (e.g. the pinned post resurfacing) -- treat an
+    all-duplicates page as the end of available history.
     """
     posts: List[WeiboPost] = []
-    since_id: Optional[str] = None
+    seen_mids: set = set()
 
-    for page_num in range(max_pages):
+    for page_num in range(1, max_pages + 1):
         url = f"{INDEX_URL}?type=uid&value={UID}&containerid={CONTAINERID}"
-        if since_id:
-            url += f"&since_id={since_id}"
+        if page_num > 1:
+            url += f"&page={page_num}"
 
         data = _get_json(url)
         if data.get("ok") != 1:
             raise WeiboFetchError(f"unexpected response (ok={data.get('ok')}): {data}")
 
         cards = (data.get("data") or {}).get("cards") or []
+        if not cards:
+            break  # no more pages of history available
+
+        added_this_page = 0
         for card in cards:
             if card.get("card_type") != 9:  # 9 == a normal post card
                 continue
             mblog = card.get("mblog") or {}
+            mid = str(mblog.get("mid") or mblog.get("id") or "")
+            if not mid or mid in seen_mids:
+                continue
+            seen_mids.add(mid)
+            added_this_page += 1
+
             text = _strip_html(mblog.get("text", ""))
             is_long = bool(mblog.get("isLongText"))
 
             if is_long or text.rstrip().endswith(("...展开", "...全文")):
-                full = fetch_full_text(mblog.get("mid") or mblog.get("id"))
+                full = fetch_full_text(mid)
                 if full:
                     text = full
                 # else: fall back to the truncated snippet rather than
@@ -326,7 +353,7 @@ def fetch_recent_posts(max_pages: int = 1, page_delay_seconds: float = MIN_SECON
 
             posts.append(
                 WeiboPost(
-                    mid=str(mblog.get("mid") or mblog.get("id") or ""),
+                    mid=mid,
                     created_at_raw=mblog.get("created_at", ""),
                     text=text,
                     is_long_text=is_long,
@@ -335,10 +362,14 @@ def fetch_recent_posts(max_pages: int = 1, page_delay_seconds: float = MIN_SECON
                 )
             )
 
-        since_id = ((data.get("data") or {}).get("cardlistInfo") or {}).get("since_id")
-        if not since_id or page_num + 1 >= max_pages:
+        if added_this_page == 0:
+            # Whole page was already-seen posts -- further pages are very
+            # unlikely to add anything new, so stop instead of burning more
+            # requests.
             break
-        time.sleep(page_delay_seconds)
+
+        if page_num < max_pages:
+            time.sleep(page_delay_seconds)
 
     return posts
 
