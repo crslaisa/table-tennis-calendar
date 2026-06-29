@@ -31,6 +31,11 @@ Chinese-speaking fans subscribing to a Chinese source account. See
 _source_description() below for why the raw source_post_id (a screenshot
 filename or a Weibo post mid) is never shown verbatim -- those are
 internal implementation details, not user-facing information.
+
+Calendar display name (X-WR-CALNAME): also pure Chinese (e.g.
+"王楚钦赛程日历"), not mixed English/Chinese -- this is the name most
+calendar apps show in their calendar list/sidebar after subscribing, so
+it gets the same "no English label leakage" treatment as DESCRIPTION.
 """
 
 from __future__ import annotations
@@ -48,8 +53,8 @@ PRODID = "-//table-tennis-calendar//wang-chuqin-sun-yingsha-schedule//EN"
 LINE_FOLD_LIMIT = 75  # octets per RFC5545 3.1, excluding the CRLF itself
 
 DISPLAY_NAMES = {
-    "wangchuqin": "王楚钦 Wang Chuqin",
-    "sunyingsha": "孙颖莎 Sun Yingsha",
+    "wangchuqin": "王楚钦赛程日历",
+    "sunyingsha": "孙颖莎赛程日历",
 }
 
 
@@ -160,7 +165,7 @@ def build_calendar(player_tag: str, events: Iterable[StoredEvent]) -> str:
         f"PRODID:{PRODID}",
         "CALSCALE:GREGORIAN",
         "METHOD:PUBLISH",
-        _fold_line(f"X-WR-CALNAME:{_escape_text(display_name)} Match Schedule"),
+        _fold_line(f"X-WR-CALNAME:{_escape_text(display_name)}"),
         "X-WR-TIMEZONE:Asia/Shanghai",
         "REFRESH-INTERVAL;VALUE=DURATION:PT30M",
         "X-PUBLISHED-TTL:PT30M",
