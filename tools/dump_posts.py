@@ -17,6 +17,15 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+# Windows Actions runners default stdout to the cp1252 console codepage,
+# which can't encode Chinese characters -- crashes with UnicodeEncodeError
+# as soon as we print(p.text). Force UTF-8 on stdout/stderr so the dump
+# doesn't blow up partway through (errors="replace" as a last-resort
+# safety net for anything still unmappable).
+for _stream in (sys.stdout, sys.stderr):
+    if hasattr(_stream, "reconfigure"):
+        _stream.reconfigure(encoding="utf-8", errors="replace")
+
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 import weibo_scraper
