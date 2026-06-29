@@ -24,13 +24,20 @@ an end time. DEFAULT_DURATION below is used for every event and is called
 out in each event's DESCRIPTION so this assumption is visible to anyone
 inspecting the feed, not just buried in code. See design doc Section 3 /
 README "Known limitations".
+
+DESCRIPTION field language: subscriber-facing text (field labels, the
+"where did this come from" line) is Chinese, since the audience is
+Chinese-speaking fans subscribing to a Chinese source account. See
+_source_description() below for why the raw source_post_id (a screenshot
+filename or a Weibo post mid) is never shown verbatim -- those are
+internal implementation details, not user-facing information.
 """
 
 from __future__ import annotations
 
 import datetime as dt
 import os
-from typing import Iterable, List
+from typing import Iterable, List, Optional
 
 from state_store import StoredEvent
 
@@ -90,6 +97,24 @@ def _format_utc(moment: dt.datetime) -> str:
     return moment.strftime("%Y%m%dT%H%M%SZ")
 
 
+def _source_description(source_post_id: Optional[str]) -> str:
+    """Human-facing (Chinese), non-technical description of where an
+    event's data came from. Deliberately does NOT leak internal
+    identifiers (screenshot filenames like 'manual-screenshot-img6890-...'
+    or raw Weibo post mids) into the subscriber-facing feed -- those are
+    implementation details, not something a calendar subscriber needs to
+    see. Covers both the automated scraper path (source_post_id is a
+    Weibo mid, set in run_pipeline.py) and the Plan B manual screenshot
+    path (source_post_id is prefixed "manual-screenshot", set in
+    tools/ingest_manual_post.py) -- so this applies uniformly to every
+    event regardless of which path produced it."""
+    if not source_post_id:
+        return "来源未知"
+    if source_post_id.startswith("manual-screenshot"):
+        return "博主微博截图（人工录入）"
+    return "博主微博发布"
+
+
 def _build_vevent(stored: StoredEvent, generated_at: dt.datetime) -> List[str]:
     start_utc = _dtstamp_utc(stored.date, stored.time_local)
     end_utc = start_utc + DEFAULT_DURATION
@@ -98,13 +123,13 @@ def _build_vevent(stored: StoredEvent, generated_at: dt.datetime) -> List[str]:
     summary = _escape_text(f"\U0001F3D3 {opponent_summary}")
 
     description_parts = [
-        f"Tournament: {stored.tournament_name or 'unknown'}",
-        f"Table: {stored.table or 'unknown'}",
-        f"Scheduled local time (Asia/Shanghai): {stored.time_local}",
-        f"Source post: {stored.source_post_id or 'unknown'}",
-        f"Original post line: {stored.raw_line}",
-        "Note: end time is not announced by the source; this event uses a "
-        f"placeholder {int(DEFAULT_DURATION.total_seconds() // 60)}-minute duration.",
+        f"赛事：{stored.tournament_name or '未知'}",
+        f"球台：{stored.table or '未知'}",
+        f"北京时间：{stored.time_local}",
+        f"消息来源：{_source_description(stored.source_post_id)}",
+        f"原文摘录：{stored.raw_line}",
+        "备注：原始消息未公布结束时间，此事件统一按"
+        f"{int(DEFAULT_DURATION.total_seconds() // 60)}分钟占位时长处理。",
     ]
     description = _escape_text("\n".join(description_parts))
 
