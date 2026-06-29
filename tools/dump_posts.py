@@ -34,6 +34,18 @@ import schedule_parser
 
 def main() -> None:
     max_pages = int(sys.argv[1]) if len(sys.argv) > 1 else 2
+
+    # Debug: call the raw getIndex endpoint directly (bypassing
+    # fetch_recent_posts) to see exactly what cardlistInfo/since_id the API
+    # returns for page 1 -- fetch_recent_posts stops paginating whenever
+    # since_id comes back falsy, so if pagination looks stuck at ~12 posts
+    # no matter how high max_pages goes, this tells us whether the API
+    # simply isn't giving us a since_id to continue with.
+    url = f"{weibo_scraper.INDEX_URL}?type=uid&value={weibo_scraper.UID}&containerid={weibo_scraper.CONTAINERID}"
+    raw = weibo_scraper._get_json(url)
+    cardlist_info = (raw.get("data") or {}).get("cardlistInfo")
+    print(f"DEBUG page-1 cardlistInfo = {cardlist_info!r}\n")
+
     posts = weibo_scraper.fetch_recent_posts(max_pages=max_pages)
     print(f"Fetched {len(posts)} post(s) across {max_pages} page(s).\n")
     for p in posts:
