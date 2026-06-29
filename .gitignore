@@ -1,0 +1,7 @@
+# Local-only manual override for the Weibo anonymous-visitor login wall.
+# Contains a real Cookie header value -- treat like a credential.
+# See weibo_scraper.py module docstring and README "Weibo login wall".
+weibo_cookie.txt
+
+__pycache__/
+*.pyc

@@ -126,6 +126,39 @@ sandbox couldn't delete files. Same for `feeds/wangchuqin.ics` /
 `feeds/sunyingsha.ics`: example output from a smoke test, not real data —
 they'll be overwritten the first time `run_pipeline.py` runs for real.
 
+## Weibo login wall (`ok: -100`)
+
+The first real run from a residential/home network hit Weibo's anonymous
+"visitor system" login wall: `weibo_scraper.py` got back `{"ok": -100, "url":
+"https://passport.weibo.com/sso/signin?..."}` instead of post data. An
+automatic fix (replaying the same genvisitor/incarnate handshake a browser
+does on first page load) is built in, but in testing it was **not enough by
+itself** — a real browser on the same network loaded the account fine, with
+no login wall, while the from-scratch handshake still got walled.
+
+If you hit this (the pipeline's error message will say "anonymous-visitor
+login wall"), the fix is a one-time, manual cookie capture — about 2
+minutes, no coding:
+
+1. In Chrome/Edge, open `https://m.weibo.cn/u/7360795486` in a normal tab
+   and confirm it loads real posts (not a login page).
+2. Open DevTools (F12 or Ctrl+Shift+I) → **Network** tab → reload the page.
+3. Click the request named `getIndex?...` in the list → **Headers** tab →
+   under **Request Headers**, find `Cookie:` → copy its entire value.
+4. Paste that value into a new plain-text file named exactly
+   `weibo_cookie.txt`, saved directly inside this `table_tennis_calendar/`
+   folder (next to `weibo_scraper.py`). No quotes, no extra text — just the
+   cookie value.
+5. Run the pipeline again (or re-trigger the GitHub Actions workflow).
+
+`weibo_cookie.txt` is in `.gitignore` and must never be committed — it's a
+real session-derived value, not a secret you "set" once and forget; if it
+stops working again later (cookies expire), repeat steps 1–4 to refresh it.
+`weibo_scraper.py` tries it first, then falls back to the automatic
+handshake, then a no-cookie attempt, so removing the file just reverts to
+the old (currently insufficient, but free to keep retrying) behavior rather
+than breaking anything.
+
 ## Known limitations (by design, for the MVP)
 
 - **No auto-removal/cancellation.** The source posts incremental
@@ -143,4 +176,4 @@ they'll be overwritten the first time `run_pipeline.py` runs for real.
   Google (~12–24h) and Outlook (~3–24h) refresh on their own schedule
   regardless of `REFRESH-INTERVAL`/`X-PUBLISHED-TTL` hints in the feed;
   Apple Calendar respects a user-adjustable interval, default weekly. This
-  is documented for subscribers on the landing page itself.
+  is documented 

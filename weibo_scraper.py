@@ -21,21 +21,37 @@ IMPORTANT — network notes from development and first real deployment:
 3. (first self-hosted-runner deployment) The first live run from the user's
    own machine got back valid JSON, but with {"ok": -100, "url":
    "https://passport.weibo.com/sso/signin?..."} instead of post data. This
-   is Weibo's anonymous "visitor system" login wall -- m.weibo.cn's
-   container API requires a short-lived anonymous "visitor" cookie (SUB/
-   SUBP, obtained via the same genvisitor/incarnate handshake a real
-   browser does invisibly on first page load) before it will serve guest
-   API responses, and apparently enforces this more aggressively for some
-   IPs than others. Fix: _get_visitor_cookie() below performs that
-   handshake once per process and _get_json transparently retries with it
-   if it sees ok == -100. This is still anonymous/no-login in the sense
-   that no Weibo account or password is involved -- it's the same
-   anonymous cookie any browser gets for free just by loading the page.
+   is Weibo's anonymous "visitor system" login wall. The obvious fix --
+   replaying the genvisitor/incarnate handshake a real browser does
+   invisibly on first page load, to get an anonymous SUB/SUBP cookie -- was
+   tried and confirmed NOT sufficient by itself (diagnose_weibo.py showed
+   the handshake completes and returns real SUB/SUBP cookies, but
+   getIndex still returns ok=-100 even with them attached: those cookies
+   are scoped to .weibo.com, and m.weibo.cn's API apparently validates
+   against a separately-synced .weibo.cn-domain session that the
+   weibo.com-only handshake doesn't establish). What DID work in testing:
+   a real browser tab on the same machine/network loaded the same account
+   successfully with no login wall at all -- so the browser's cookie jar
+   (built up from ordinary past browsing, not anything this script can
+   reconstruct from scratch) is what makes the difference, not the IP.
+
+   Rather than have this script try to extract or store a real browser
+   session cookie -- that's a credential-like value tied to one person's
+   browsing session, not something that belongs in code or in a public
+   repo -- the fix here is a small manual opt-in: if a file named
+   weibo_cookie.txt exists next to this script (see _LOCAL_COOKIE_FILENAME
+   below), its contents are sent as the Cookie header. That file is
+   listed in .gitignore and must never be committed. See README "Weibo
+   login wall" for how to create it. The genvisitor/incarnate handshake is
+   kept as an automatic fallback (_get_visitor_cookie below) since it's
+   free to try and might work for other accounts/networks even though it
+   didn't help here.
 """
 
 from __future__ import annotations
 
 import json
+import os
 import random
 import re
 import time
@@ -78,12 +94,35 @@ class WeiboFetchError(RuntimeError):
     pass
 
 
+# Optional manual override: a Cookie header value copied from a real,
+# already-logged-in-or-not browser tab that successfully loads
+# https://m.weibo.cn/u/<UID>. See module docstring note 3 and README "Weibo
+# login wall". Never committed -- see .gitignore.
+_LOCAL_COOKIE_FILENAME = "weibo_cookie.txt"
+
 # Cached anonymous "visitor" cookie (see note 3 above). Acquired lazily, at
 # most once per process, the first time the API demands it.
 _VISITOR_COOKIE: Optional[str] = None
 
+_LOCAL_COOKIE_LOADED = False
+_LOCAL_COOKIE: Optional[str] = None
 
-def _request_headers() -> dict:
+
+def _local_cookie() -> Optional[str]:
+    """Read _LOCAL_COOKIE_FILENAME next to this script, once per process."""
+    global _LOCAL_COOKIE_LOADED, _LOCAL_COOKIE
+    if not _LOCAL_COOKIE_LOADED:
+        _LOCAL_COOKIE_LOADED = True
+        path = os.path.join(os.path.dirname(os.path.abspath(__file__)), _LOCAL_COOKIE_FILENAME)
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                _LOCAL_COOKIE = f.read().strip() or None
+        except OSError:
+            _LOCAL_COOKIE = None
+    return _LOCAL_COOKIE
+
+
+def _request_headers(cookie: Optional[str]) -> dict:
     headers = {
         "User-Agent": USER_AGENT,
         "Accept": "application/json, text/plain, */*",
@@ -91,8 +130,8 @@ def _request_headers() -> dict:
         "MWeibo-Pwa": "1",
         "X-Requested-With": "XMLHttpRequest",
     }
-    if _VISITOR_COOKIE:
-        headers["Cookie"] = _VISITOR_COOKIE
+    if cookie:
+        headers["Cookie"] = cookie
     return headers
 
 
@@ -162,8 +201,8 @@ def _get_visitor_cookie() -> str:
     return _VISITOR_COOKIE
 
 
-def _get_json(url: str, *, _retried_after_login_wall: bool = False) -> dict:
-    req = urllib.request.Request(url, headers=_request_headers())
+def _fetch_json_once(url: str, cookie: Optional[str]) -> dict:
+    req = urllib.request.Request(url, headers=_request_headers(cookie))
     try:
         with urllib.request.urlopen(req, timeout=REQUEST_TIMEOUT_SECONDS) as resp:
             body = resp.read()
@@ -176,19 +215,46 @@ def _get_json(url: str, *, _retried_after_login_wall: bool = False) -> dict:
             f"by the server rather than a genuine malformed response"
         )
     try:
-        data = json.loads(body)
+        return json.loads(body)
     except json.JSONDecodeError as e:
         raise WeiboFetchError(f"non-JSON response from {url}: {e}") from e
 
-    # ok == -100 with a passport.weibo.com sso/signin url means the request
-    # hit the anonymous-visitor login wall (see note 3 in the module
-    # docstring). Do the visitor handshake once and retry this same request
-    # with the resulting cookie before giving up.
-    if data.get("ok") == -100 and not _retried_after_login_wall:
-        _get_visitor_cookie()
-        return _get_json(url, _retried_after_login_wall=True)
 
-    return data
+def _get_json(url: str) -> dict:
+    """Fetch url as JSON, working around Weibo's anonymous-visitor login
+    wall (ok == -100 with a passport.weibo.com/sso/signin url -- see note 3
+    in the module docstring) by trying, in order: (1) the local
+    weibo_cookie.txt override if present, (2) a cached visitor-handshake
+    cookie from earlier this run, (3) no cookie at all, (4) a fresh
+    visitor-handshake attempt. Raises with a clear, actionable message if
+    every option is exhausted."""
+    data: dict = {}
+    tried_visitor_handshake = False
+
+    for cookie in (_local_cookie(), _VISITOR_COOKIE, None):
+        data = _fetch_json_once(url, cookie)
+        if data.get("ok") != -100:
+            return data
+
+    try:
+        fresh_cookie = _get_visitor_cookie()
+        tried_visitor_handshake = True
+    except WeiboFetchError:
+        pass
+    else:
+        data = _fetch_json_once(url, fresh_cookie)
+        if data.get("ok") != -100:
+            return data
+
+    raise WeiboFetchError(
+        f"unexpected response (ok={data.get('ok')}): {data} -- this looks like "
+        f"Weibo's anonymous-visitor login wall. Tried: local {_LOCAL_COOKIE_FILENAME} "
+        f"({'present' if _local_cookie() else 'absent'}), a cached/fresh anonymous "
+        f"visitor-handshake cookie ({'attempted' if tried_visitor_handshake else 'failed before use'}), "
+        f"and no cookie. Fix: refresh weibo_cookie.txt with a Cookie value copied from "
+        f"a real browser tab that successfully loads https://m.weibo.cn/u/{UID} -- "
+        f"see README 'Weibo login wall'."
+    )
 
 
 def _strip_html(text: str) -> str:
@@ -222,6 +288,12 @@ def fetch_recent_posts(max_pages: int = 1, page_delay_seconds: float = MIN_SECON
     max_pages=1 is enough for the steady-state 30-60 min poll (you only need
     to see posts since the last run). Use a higher value only for backfill /
     initial-load scenarios.
+
+    Note: this account pins its schedule-summary post (typically titled
+    "X月X日中国队赛程") to the top of its timeline, and getIndex's first page
+    already includes the pinned card first -- so max_pages=1 naturally
+    catches it without needing to scroll/paginate further. Confirmed by the
+    user, who has watched this account's posting pattern directly.
     """
     posts: List[WeiboPost] = []
     since_id: Optional[str] = None
