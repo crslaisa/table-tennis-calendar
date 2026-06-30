@@ -57,7 +57,7 @@ PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 DAILY_STATS_PATH = os.path.join(DATA_DIR, "daily_stats.json")
 
-GITHUB_REPO = "clarissally/table-tennis-calendar"
+GITHUB_REPO = "crslaisa/table-tennis-calendar"
 DAILY_UPDATE_THRESHOLD = 5  # new + changed events across all players per UTC day
 
 
