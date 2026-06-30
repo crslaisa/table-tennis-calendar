@@ -43,10 +43,10 @@ import argparse
 import datetime
 import json
 import os
-import smtplib
 import sys
 import traceback
-from email.mime.text import MIMEText
+import urllib.error
+import urllib.request
 
 from schedule_parser import parse_post, TARGET_PLAYERS
 from state_store import apply_events
@@ -57,7 +57,7 @@ PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
 DATA_DIR = os.path.join(PROJECT_ROOT, "data")
 DAILY_STATS_PATH = os.path.join(DATA_DIR, "daily_stats.json")
 
-ALERT_EMAIL = "clarissally@gmail.com"
+GITHUB_REPO = "clarissally/table-tennis-calendar"
 DAILY_UPDATE_THRESHOLD = 5  # new + changed events across all players per UTC day
 
 
@@ -86,35 +86,49 @@ def save_daily_stats(stats: dict) -> None:
     os.replace(tmp, DAILY_STATS_PATH)
 
 
-def send_alert_email(updates_today: int) -> None:
-    password = os.environ.get("GMAIL_APP_PASSWORD", "")
-    if not password:
+def create_alert_issue(updates_today: int) -> None:
+    """Open a GitHub Issue so the repo owner gets a notification email from
+    GitHub. Uses the automatically-injected GITHUB_TOKEN secret (no extra
+    credentials needed) and Python's standard-library urllib -- no pip
+    install required."""
+    token = os.environ.get("GITHUB_TOKEN", "")
+    if not token:
         print(
-            "WARNING: GMAIL_APP_PASSWORD env var not set -- skipping alert email.",
+            "WARNING: GITHUB_TOKEN env var not set -- skipping alert issue.",
             file=sys.stderr,
         )
         return
+    title = f"[乒乓赛程] 今日更新 {updates_today} 次，已自动暂停提交"
     body = (
-        f"乒乓赛程日历管道今日赛程更新已达 {updates_today} 次"
+        f"日历管道今日赛程更新已达 **{updates_today}** 次"
         f"（阈值：{DAILY_UPDATE_THRESHOLD}），已自动暂停提交更新。\n\n"
-        "请前往 GitHub Actions 查看详情：\n"
-        "https://github.com/clarissally/table-tennis-calendar/actions\n\n"
+        f"请前往 [Actions 日志](https://github.com/{GITHUB_REPO}/actions) 查看详情。\n\n"
         "如确认数据无误，日计数会在 UTC 0 点后自动重置，下次定时运行时恢复正常提交。"
         "也可以手动触发一次工作流（Run workflow）提前恢复。"
     )
-    msg = MIMEText(body, "plain", "utf-8")
-    msg["Subject"] = f"[乒乓赛程] 今日更新 {updates_today} 次，已自动暂停提交"
-    msg["From"] = ALERT_EMAIL
-    msg["To"] = ALERT_EMAIL
+    payload = json.dumps({"title": title, "body": body}).encode("utf-8")
+    req = urllib.request.Request(
+        f"https://api.github.com/repos/{GITHUB_REPO}/issues",
+        data=payload,
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "Accept": "application/vnd.github+json",
+            "X-GitHub-Api-Version": "2022-11-28",
+        },
+        method="POST",
+    )
     try:
-        with smtplib.SMTP("smtp.gmail.com", 587) as smtp:
-            smtp.ehlo()
-            smtp.starttls()
-            smtp.login(ALERT_EMAIL, password)
-            smtp.sendmail(ALERT_EMAIL, [ALERT_EMAIL], msg.as_bytes())
-        print(f"Alert email sent to {ALERT_EMAIL}.")
+        with urllib.request.urlopen(req) as resp:
+            issue = json.loads(resp.read())
+        print(f"Alert issue created: {issue['html_url']}")
+    except urllib.error.HTTPError as e:
+        print(
+            f"WARNING: failed to create alert issue: {e} -- {e.read().decode()}",
+            file=sys.stderr,
+        )
     except Exception as e:
-        print(f"WARNING: failed to send alert email: {e}", file=sys.stderr)
+        print(f"WARNING: failed to create alert issue: {e}", file=sys.stderr)
 
 
 def run(feeds_dir: str, max_pages: int) -> int:
@@ -160,7 +174,7 @@ def run(feeds_dir: str, max_pages: int) -> int:
                 f"ALERT: daily update threshold ({DAILY_UPDATE_THRESHOLD}) reached -- "
                 "feeds written but committing paused; sending alert email."
             )
-            send_alert_email(stats["updates_today"])
+            create_alert_issue(stats["updates_today"])
             return 99  # workflow sees non-zero → skips git commit step
 
     return 0
