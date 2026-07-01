@@ -71,5 +71,26 @@
     "timezone_assumed": "Asia/Shanghai",
     "tournament_name": "WTT美国大满贯",
     "uid": "ttcal-cdb8fe5055e8bfa1@clarissally.github.io"
+  },
+  "ttcal-7fef0e5c658112d4@clarissally.github.io": {
+    "confidence": "high",
+    "date": "2026-07-02",
+    "last_modified": "2026-07-01T00:00:00Z",
+    "player1": "王楚钦/孙颖莎",
+    "player2": "A·勒布伦/大藤沙月",
+    "player_tags": [
+      "sunyingsha",
+      "wangchuqin"
+    ],
+    "published": true,
+    "raw_line": "5:55 T1 王楚钦/孙颖莎 🇨🇳 vs A·勒布伦🇫🇷/大藤沙月🇯🇵",
+    "sequence": 0,
+    "source_post_id": "manual-screenshot-2026-07-02",
+    "start_time": "05:55",
+    "table": "T1",
+    "time_local": "5:55",
+    "timezone_assumed": "Asia/Shanghai",
+    "tournament_name": "WTT美国大满贯",
+    "uid": "ttcal-7fef0e5c658112d4@clarissally.github.io"
   }
 }
